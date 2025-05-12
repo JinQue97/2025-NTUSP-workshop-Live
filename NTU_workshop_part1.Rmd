@@ -167,16 +167,13 @@ one_cmt_dv_pred <- dv_vs_pred(one_cmt_xpdb_pk,
                               title = "One Compartment",
                               log   = 'xy',
                               subtitle = NULL,
-                              guide = TRUE) +
-  labs(x = 'PRED (mg/L)', y = 'DV (mg/L)')
-
+                              guide = TRUE)
 two_cmt_dv_pred <- dv_vs_pred(two_cmt_xpdb_pk, 
                               type="pls", 
                               title = "Two Compartment",
                               log   = 'xy',
                               subtitle = NULL,
-                              guide = TRUE) +
-  labs(x = 'PRED (mg/L)', y = 'DV (mg/L)')
+                              guide = TRUE)
 
 grid.arrange(one_cmt_dv_pred, two_cmt_dv_pred, nrow = 1)
 
@@ -187,17 +184,14 @@ one_cmt_dv_ipred <- dv_vs_ipred(one_cmt_xpdb_pk,
                                 log   = 'xy',
                                 subtitle = NULL,
                                 guide = TRUE
-                                ) +
-  labs(x = 'IPRED (mg/L)', y = 'DV (mg/L)')
-
+                                )
 two_cmt_dv_ipred <- dv_vs_ipred(two_cmt_xpdb_pk, 
                                 group="ID",
                                 title = "Two Compartment",
                                 log   = 'xy',
                                 subtitle = NULL,
                                 guide = TRUE
-                                ) +
-  labs(x = 'IPRED (mg/L)', y = 'DV (mg/L)')
+                                )
 
 grid.arrange(one_cmt_dv_ipred, two_cmt_dv_ipred, nrow = 1)
 
@@ -207,16 +201,14 @@ one_cmt_ipred_time <- pred_vs_idv(one_cmt_xpdb_pk,
                                  title = "One Compartment",
                                  subtitle = NULL,
                                  guide = TRUE
-                                 ) +
-  labs(x = 'Time (minutes)', y = 'IPRED (mg/L)')
+                                 )
 
 two_cmt_ipred_time <- pred_vs_idv(two_cmt_xpdb_pk, 
                                  group="ID",
                                  title = "Two Compartment",
                                  subtitle = NULL,
                                  guide = TRUE
-                                 ) +
-  labs(x = 'Time (minutes)', y = 'IPRED (mg/L)')
+                                 )
 
 grid.arrange(one_cmt_ipred_time, two_cmt_ipred_time, nrow = 1)
 
@@ -227,8 +219,7 @@ one_cmt_cwres_pred <- res_vs_pred(one_cmt_xpdb_pk,
                                   title = "One Compartment",
                                   subtitle = NULL,
                                   guide = TRUE
-                                  ) +
-  labs(x = 'PRED (mg/L)', y = 'CWRES')
+                                  )
 
 two_cmt_cwres_pred <- res_vs_pred(two_cmt_xpdb_pk, 
                                   res="CWRES", 
@@ -236,8 +227,7 @@ two_cmt_cwres_pred <- res_vs_pred(two_cmt_xpdb_pk,
                                   title = "Two Compartment",
                                   subtitle = NULL,
                                   guide = TRUE
-                                  ) +
-  labs(x = 'PRED (mg/L)', y = 'CWRES')
+                                  )
 
 grid.arrange(one_cmt_cwres_pred, two_cmt_cwres_pred, nrow = 1)
 ```
@@ -385,15 +375,14 @@ two_cmt_combined_xpdb_pk <- xpose_data_nlmixr2(two_cmt_combined_pk_fit,
                                      xp_theme = theme_xp_nlmixr2()
                                      )
 
-# observation vs prediction plot
+# observation vs individual prediction plot
 add_error_dv_pred <- dv_vs_pred(two_cmt_add_xpdb_pk, 
                                 group="ID",
                                 title = "Additive Error",
                                 #log = "xy",
                                 subtitle = NULL,
                                 guide = FALSE
-                                ) +
-  labs(x = 'PRED (mg/L)', y = 'DV (mg/L)')
+                                )
 
 prop_error_dv_pred <- dv_vs_pred(two_cmt_xpdb_pk, 
                                 group="ID",
@@ -401,17 +390,14 @@ prop_error_dv_pred <- dv_vs_pred(two_cmt_xpdb_pk,
                                 #log = "xy",
                                 subtitle = NULL,
                                 guide = FALSE
-                                ) +
-  labs(x = 'PRED (mg/L)', y = 'DV (mg/L)')
-
+                                )
 comb_error_dv_pred <- dv_vs_pred(two_cmt_combined_xpdb_pk, 
                                 group="ID",
                                 title = "Combined Error",
                                 #log = "xy",
                                 subtitle = NULL,
                                 guide = FALSE
-                                ) +
-  labs(x = 'PRED (mg/L)', y = 'DV (mg/L)')
+                                )
 
 grid.arrange(add_error_dv_pred, prop_error_dv_pred, comb_error_dv_pred, nrow = 1)
 
@@ -422,8 +408,7 @@ add_error_cwres <- res_vs_pred(two_cmt_add_xpdb_pk,
                                   title = "Additive error",
                                   subtitle = NULL,
                                   guide = TRUE
-                                  ) +
-  labs(x = 'PRED (mg/L)', y = 'CWRES')
+                                  )
 
 prop_error_cwres <- res_vs_pred(two_cmt_xpdb_pk, 
                                   res="CWRES", 
@@ -431,8 +416,7 @@ prop_error_cwres <- res_vs_pred(two_cmt_xpdb_pk,
                                   title = "Proportioanl error",
                                   subtitle = NULL,
                                   guide = TRUE
-                                  ) +
-  labs(x = 'PRED (mg/L)', y = 'CWRES')
+                                  )
 
 
 comb_error_cwres <- res_vs_pred(two_cmt_combined_xpdb_pk, 
@@ -441,8 +425,7 @@ comb_error_cwres <- res_vs_pred(two_cmt_combined_xpdb_pk,
                                   title = "Combined error",
                                   subtitle = NULL,
                                   guide = TRUE
-                                  )+
-  labs(x = 'PRED (mg/L)', y = 'CWRES')
+                                  )
 
 grid.arrange(add_error_cwres, prop_error_cwres, comb_error_cwres, nrow = 1)
 ```
