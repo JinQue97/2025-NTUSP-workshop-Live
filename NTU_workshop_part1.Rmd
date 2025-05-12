@@ -23,6 +23,9 @@ library(rxode2)
 library(gridExtra)
 library(ggPMX)
 library(ggpubr)
+library(mrgsolve)
+library(vpc)
+library(patchwork)
 ```
 
 # Data exploration
@@ -167,13 +170,16 @@ one_cmt_dv_pred <- dv_vs_pred(one_cmt_xpdb_pk,
                               title = "One Compartment",
                               log   = 'xy',
                               subtitle = NULL,
-                              guide = TRUE)
+                              guide = TRUE) +
+  labs(x = 'PRED (mg/L)', y = 'DV (mg/L)')
+
 two_cmt_dv_pred <- dv_vs_pred(two_cmt_xpdb_pk, 
                               type="pls", 
                               title = "Two Compartment",
                               log   = 'xy',
                               subtitle = NULL,
-                              guide = TRUE)
+                              guide = TRUE) +
+  labs(x = 'PRED (mg/L)', y = 'DV (mg/L)')
 
 grid.arrange(one_cmt_dv_pred, two_cmt_dv_pred, nrow = 1)
 
@@ -184,14 +190,17 @@ one_cmt_dv_ipred <- dv_vs_ipred(one_cmt_xpdb_pk,
                                 log   = 'xy',
                                 subtitle = NULL,
                                 guide = TRUE
-                                )
+                                ) +
+  labs(x = 'IPRED (mg/L)', y = 'DV (mg/L)')
+
 two_cmt_dv_ipred <- dv_vs_ipred(two_cmt_xpdb_pk, 
                                 group="ID",
                                 title = "Two Compartment",
                                 log   = 'xy',
                                 subtitle = NULL,
                                 guide = TRUE
-                                )
+                                ) +
+  labs(x = 'IPRED (mg/L)', y = 'DV (mg/L)')
 
 grid.arrange(one_cmt_dv_ipred, two_cmt_dv_ipred, nrow = 1)
 
@@ -201,14 +210,16 @@ one_cmt_ipred_time <- pred_vs_idv(one_cmt_xpdb_pk,
                                  title = "One Compartment",
                                  subtitle = NULL,
                                  guide = TRUE
-                                 )
+                                 ) +
+  labs(x = 'Time (minutes)', y = 'IPRED (mg/L)')
 
 two_cmt_ipred_time <- pred_vs_idv(two_cmt_xpdb_pk, 
                                  group="ID",
                                  title = "Two Compartment",
                                  subtitle = NULL,
                                  guide = TRUE
-                                 )
+                                 ) +
+  labs(x = 'Time (minutes)', y = 'IPRED (mg/L)')
 
 grid.arrange(one_cmt_ipred_time, two_cmt_ipred_time, nrow = 1)
 
@@ -219,7 +230,8 @@ one_cmt_cwres_pred <- res_vs_pred(one_cmt_xpdb_pk,
                                   title = "One Compartment",
                                   subtitle = NULL,
                                   guide = TRUE
-                                  )
+                                  ) +
+  labs(x = 'PRED (mg/L)', y = 'CWRES')
 
 two_cmt_cwres_pred <- res_vs_pred(two_cmt_xpdb_pk, 
                                   res="CWRES", 
@@ -227,7 +239,8 @@ two_cmt_cwres_pred <- res_vs_pred(two_cmt_xpdb_pk,
                                   title = "Two Compartment",
                                   subtitle = NULL,
                                   guide = TRUE
-                                  )
+                                  ) +
+  labs(x = 'PRED (mg/L)', y = 'CWRES')
 
 grid.arrange(one_cmt_cwres_pred, two_cmt_cwres_pred, nrow = 1)
 ```
@@ -375,14 +388,15 @@ two_cmt_combined_xpdb_pk <- xpose_data_nlmixr2(two_cmt_combined_pk_fit,
                                      xp_theme = theme_xp_nlmixr2()
                                      )
 
-# observation vs individual prediction plot
+# observation vs prediction plot
 add_error_dv_pred <- dv_vs_pred(two_cmt_add_xpdb_pk, 
                                 group="ID",
                                 title = "Additive Error",
                                 #log = "xy",
                                 subtitle = NULL,
                                 guide = FALSE
-                                )
+                                ) +
+  labs(x = 'PRED (mg/L)', y = 'DV (mg/L)')
 
 prop_error_dv_pred <- dv_vs_pred(two_cmt_xpdb_pk, 
                                 group="ID",
@@ -390,14 +404,17 @@ prop_error_dv_pred <- dv_vs_pred(two_cmt_xpdb_pk,
                                 #log = "xy",
                                 subtitle = NULL,
                                 guide = FALSE
-                                )
+                                ) +
+  labs(x = 'PRED (mg/L)', y = 'DV (mg/L)')
+
 comb_error_dv_pred <- dv_vs_pred(two_cmt_combined_xpdb_pk, 
                                 group="ID",
                                 title = "Combined Error",
                                 #log = "xy",
                                 subtitle = NULL,
                                 guide = FALSE
-                                )
+                                ) +
+  labs(x = 'PRED (mg/L)', y = 'DV (mg/L)')
 
 grid.arrange(add_error_dv_pred, prop_error_dv_pred, comb_error_dv_pred, nrow = 1)
 
@@ -408,7 +425,8 @@ add_error_cwres <- res_vs_pred(two_cmt_add_xpdb_pk,
                                   title = "Additive error",
                                   subtitle = NULL,
                                   guide = TRUE
-                                  )
+                                  ) +
+  labs(x = 'PRED (mg/L)', y = 'CWRES')
 
 prop_error_cwres <- res_vs_pred(two_cmt_xpdb_pk, 
                                   res="CWRES", 
@@ -416,7 +434,8 @@ prop_error_cwres <- res_vs_pred(two_cmt_xpdb_pk,
                                   title = "Proportioanl error",
                                   subtitle = NULL,
                                   guide = TRUE
-                                  )
+                                  ) +
+  labs(x = 'PRED (mg/L)', y = 'CWRES')
 
 
 comb_error_cwres <- res_vs_pred(two_cmt_combined_xpdb_pk, 
@@ -425,7 +444,8 @@ comb_error_cwres <- res_vs_pred(two_cmt_combined_xpdb_pk,
                                   title = "Combined error",
                                   subtitle = NULL,
                                   guide = TRUE
-                                  )
+                                  )+
+  labs(x = 'PRED (mg/L)', y = 'CWRES')
 
 grid.arrange(add_error_cwres, prop_error_cwres, comb_error_cwres, nrow = 1)
 ```
@@ -630,5 +650,176 @@ two_cmt_final_pk_fit$omega
 # Final model parameters
 two_cmt_final_pk_fit$parFixedDf %>% select(`Back-transformed`, `%RSE`, `Shrink(SD)%`) %>% rename(Parameters = `Back-transformed`)
 ```
+
+## Fit Test Full (fitting of all points)
+```{r}
+# additive model fitting 
+test_full_two_cmt_final_pk_fit <- nlmixr2(
+  busulfan_final_2cmt_model,
+  busulfan_dataset,
+  "posthoc",
+  control = foceiControl(maxOuterIterations=0),
+  table = list(cwres = TRUE)
+)
+
+## Individual estimation with full data points 
+test_full_data <- test_full_two_cmt_final_pk_fit$origData
+test_full_indv_cl <- data.frame(ID = test_full_two_cmt_final_pk_fit$ID, Clearance = test_full_two_cmt_final_pk_fit$cl)
+
+# Plasma drug concentration decline in two phases shown in semi-log plot
+ggplot(test_full_data, aes(TIME/60, DV, group = ID, color = as.factor(ID))) +
+  geom_point() +
+  geom_line() +
+  theme_bw() +
+  labs(title = "Busulfan Test Dose semi-log plot - Full Time Points", x = "Time (hours)", y = "Conc (mg/L)") +
+  theme(legend.position = "blank")
+
+test_full_indiv_AUC<- merge(test_full_data, test_full_indv_cl, by = 'ID')
+test_full_indiv_AUC <- test_full_indiv_AUC %>% mutate(AUC = AMT/Clearance) %>% select(ID, AUC)
+
+test_full_indiv_AUC <- test_full_indiv_AUC %>%
+  group_by(ID) %>%
+  summarize(full_tp_AUC = first(AUC), .groups = "drop")
+
+test_full_indiv_AUC
 ```
+
+
+## Fit test 2 (fitting of 2 data points)
+```{r}
+test_last_two_dataset <- busulfan_dataset %>% 
+  group_by(ID) %>%
+  filter(row_number() == 1 | row_number() == n()-1 | row_number() == n()) %>% ungroup()
+
+# Plasma drug concentration decline in two phases shown in semi-log plot
+ggplot(test_last_two_dataset, aes(TIME/60, DV, group = ID, color = as.factor(ID))) +
+  geom_point() +
+  geom_line() +
+  theme_bw() +
+  labs(title = "Busulfan Test Dose semi-log plot - Two Last Points", x = "Time (hours)", y = "Conc (mg/L)") +
+  theme(legend.position = "blank")
+
+# Model Fitting
+test_two_last_two_cmt_final_pk_fit <- nlmixr2(
+  busulfan_final_2cmt_model,
+  test_last_two_dataset,
+  "posthoc",
+  control = foceiControl(maxOuterIterations=0),
+  table = list(cwres = TRUE, npde = TRUE)
+)
+
+## Individual estimation with full data points 
+test_two_last_data <- test_two_last_two_cmt_final_pk_fit$origData
+test_two_last_indv_cl <- data.frame(ID = test_two_last_two_cmt_final_pk_fit$ID, Clearance = test_two_last_two_cmt_final_pk_fit$cl)
+
+test_two_last_indiv_AUC<- merge(test_two_last_data, test_two_last_indv_cl, by = 'ID')
+test_two_last_indiv_AUC <- test_two_last_indiv_AUC %>% mutate(AUC = AMT/Clearance) %>% select(ID, AUC)
+
+test_two_last_indiv_AUC <- test_two_last_indiv_AUC %>%
+  group_by(ID) %>%
+  summarize(last_two_tp_AUC = first(AUC), .groups = "drop")
+
+test_two_last_indiv_AUC
+```
+
+## Fit test 1 (fitting of 1 data point)
+```{r}
+test_last_one_dataset <- busulfan_dataset %>% 
+  group_by(ID) %>%
+  filter(row_number() == 1 | row_number() == n()) %>% ungroup()
+
+# Plasma drug concentration decline in two phases shown in semi-log plot
+ggplot(test_last_one_dataset, aes(TIME/60, DV, group = ID, color = as.factor(ID))) +
+  geom_point() +
+  geom_line() +
+  theme_bw() +
+  labs(title = "Busulfan Test Dose semi-log plot - Last Point", x = "Time (hours)", y = "Conc (mg/L)") +
+  theme(legend.position = "blank")
+
+# Model Fitting
+test_two_last_one_cmt_final_pk_fit <- nlmixr2(
+  busulfan_final_2cmt_model,
+  test_last_one_dataset,
+  "posthoc",
+  control = foceiControl(maxOuterIterations=0),
+  table = list(cwres = TRUE, npde = TRUE)
+)
+
+## Individual estimation with full data points 
+test_one_last_data <- test_two_last_one_cmt_final_pk_fit$origData
+test_one_last_indv_cl <- data.frame(ID = test_two_last_one_cmt_final_pk_fit$ID, Clearance = test_two_last_one_cmt_final_pk_fit$cl)
+
+test_one_last_indiv_AUC<- merge(test_one_last_data, test_one_last_indv_cl, by = 'ID')
+test_one_last_indiv_AUC <- test_one_last_indiv_AUC %>% mutate(AUC = AMT/Clearance) %>% select(ID, AUC)
+
+test_one_last_indiv_AUC <- test_one_last_indiv_AUC %>%
+  group_by(ID) %>%
+  summarize(last_tp_AUC = first(AUC), .groups = "drop")
+
+test_one_last_indiv_AUC
+```
+
+
+## Compare across estimation methods
+```{r}
+test_compare_auc <- merge(test_full_indiv_AUC, test_two_last_indiv_AUC, by = "ID")
+test_compare_auc <- merge(test_compare_auc, test_one_last_indiv_AUC, by = "ID")
+
+test_compare_auc[] <- lapply(test_compare_auc, function(x) if(is.numeric(x)) round(x, 0) else x)
+print(test_compare_auc)
+
+# Convert to long format
+df_test_long <- test_compare_auc %>%
+  pivot_longer(cols = -ID, names_to = "Method", values_to = "AUC")
+
+# Order methods for nicer plotting
+df_test_long$Method <- factor(df_test_long$Method, levels = c("full_estimation_AUC", "last_two_tp_AUC", "last_tp_AUC"))
+
+# Set common y-axis limits
+y_limits <- c(150, 450)
+
+# --- Full vs last two time points
+df_two_tp <- test_compare_auc %>%
+  select(ID, Full = full_tp_AUC, Two_TP = last_two_tp_AUC) %>%
+  pivot_longer(cols = -ID, names_to = "Method", values_to = "AUC") %>%
+  mutate(Method = factor(Method, levels = c("Full", "Two_TP")))  
+
+p_two_tp <- ggplot(df_two_tp, aes(x = Method, y = AUC)) +
+  geom_boxplot(alpha = 0.3, aes(fill = Method, color = Method)) +
+  geom_jitter(aes(color = Method), width = 0.1, alpha = 0.7, size = 2) +
+  geom_line(aes(group = ID), color = "grey60", alpha = 0.6) +
+  scale_fill_manual(values = c("Full" = "#F8766D", "Two_TP" = "#00BFC4")) +
+  scale_color_manual(values = c("Full" = "#F8766D", "Two_TP" = "#00BFC4")) +
+  theme_bw() +
+  labs(title = "Two TP", x = "", y = "AUC") +
+  theme(legend.position = "none",
+        plot.title = element_text(hjust = 0.5)
+        ) +
+  scale_y_continuous(limits = y_limits)
+
+# --- Full vs Last TP
+df_last <- test_compare_auc %>%
+  select(ID, Full = full_tp_AUC, Last_TP = last_tp_AUC) %>%
+  pivot_longer(cols = -ID, names_to = "Method", values_to = "AUC") %>%
+  mutate(Method = factor(Method, levels = c("Full", "Last_TP")))  
+
+p_last <- ggplot(df_last, aes(x = Method, y = AUC)) +
+  geom_boxplot(alpha = 0.3, aes(fill = Method, color = Method)) +
+  geom_jitter(aes(color = Method), width = 0.1, alpha = 0.7, size = 2) +
+  geom_line(aes(group = ID), color = "grey60", alpha = 0.6) +
+  scale_fill_manual(values = c("Full" = "#F8766D", "Last_TP" = "#7CAE00")) +
+  scale_color_manual(values = c("Full" = "#F8766D", "Last_TP" = "#7CAE00")) +
+  theme_bw() +
+  labs(title = "Last TP", x = "", y = "AUC") +
+  theme(legend.position = "none",
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        plot.title = element_text(hjust = 0.5)
+        ) +
+  scale_y_continuous(limits = y_limits)
+
+wrap_plots(p_two_tp, p_last, ncol = 2)
+```
+
 
