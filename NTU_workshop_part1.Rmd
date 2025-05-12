@@ -651,6 +651,7 @@ two_cmt_final_pk_fit$omega
 two_cmt_final_pk_fit$parFixedDf %>% select(`Back-transformed`, `%RSE`, `Shrink(SD)%`) %>% rename(Parameters = `Back-transformed`)
 ```
 
+
 # Fit Test Full (fitting of all points)
 ```{r}
 # additive model fitting 
@@ -685,41 +686,41 @@ test_full_indiv_AUC
 ```
 
 
-# Fit test 2 (fitting of 2 data points)
+# Fit test 2 (fitting of 2 data points - TDM)
 ```{r}
-test_last_two_dataset <- busulfan_dataset %>% 
+test_tdm_dataset <- busulfan_dataset %>% 
   group_by(ID) %>%
-  filter(row_number() == 1 | row_number() == n()-1 | row_number() == n()) %>% ungroup()
+  filter(row_number() == 1 | row_number() == 2 | row_number() == n()) %>% ungroup()
 
 # Plasma drug concentration decline in two phases shown in semi-log plot
-ggplot(test_last_two_dataset, aes(TIME/60, DV, group = ID, color = as.factor(ID))) +
+ggplot(test_tdm_dataset, aes(TIME/60, DV, group = ID, color = as.factor(ID))) +
   geom_point() +
   geom_line() +
   theme_bw() +
-  labs(title = "Busulfan Test Dose semi-log plot - Two Last Points", x = "Time (hours)", y = "Conc (mg/L)") +
+  labs(title = "Busulfan Test Dose semi-log plot - TDM", x = "Time (hours)", y = "Conc (mg/L)") +
   theme(legend.position = "blank")
 
 # Model Fitting
-test_two_last_two_cmt_final_pk_fit <- nlmixr2(
+test_tdm_two_cmt_final_pk_fit <- nlmixr2(
   busulfan_final_2cmt_model,
-  test_last_two_dataset,
+  test_tdm_dataset,
   "posthoc",
   control = foceiControl(maxOuterIterations=0),
   table = list(cwres = TRUE, npde = TRUE)
 )
 
 ## Individual estimation with full data points 
-test_two_last_data <- test_two_last_two_cmt_final_pk_fit$origData
-test_two_last_indv_cl <- data.frame(ID = test_two_last_two_cmt_final_pk_fit$ID, Clearance = test_two_last_two_cmt_final_pk_fit$cl)
+test_tdm_data <- test_tdm_two_cmt_final_pk_fit$origData
+test_tdm_data_indv_cl <- data.frame(ID = test_tdm_two_cmt_final_pk_fit$ID, Clearance = test_tdm_two_cmt_final_pk_fit$cl)
 
-test_two_last_indiv_AUC<- merge(test_two_last_data, test_two_last_indv_cl, by = 'ID')
-test_two_last_indiv_AUC <- test_two_last_indiv_AUC %>% mutate(AUC = AMT/Clearance) %>% select(ID, AUC)
+test_tdm_indiv_AUC<- merge(test_tdm_data, test_tdm_data_indv_cl, by = 'ID')
+test_tdm_indiv_AUC <- test_tdm_indiv_AUC %>% mutate(AUC = AMT/Clearance) %>% select(ID, AUC)
 
-test_two_last_indiv_AUC <- test_two_last_indiv_AUC %>%
+test_tdm_indiv_AUC <- test_tdm_indiv_AUC %>%
   group_by(ID) %>%
   summarize(last_two_tp_AUC = first(AUC), .groups = "drop")
 
-test_two_last_indiv_AUC
+test_tdm_indiv_AUC
 ```
 
 # Fit test 1 (fitting of 1 data point)
@@ -760,10 +761,28 @@ test_one_last_indiv_AUC
 ```
 
 
+# Pred Test 0
+```{r}
+model_code <- 'model/busulfan_test_dose_model.mod'
+mod <- mread('busulfan_test_dose', file = model_code)
+
+test_sim <- mod %>% ev(busulfan_dataset) %>%  mrgsim(Req = c('CP_no_RUV', 'CP', 'no_obs_AUC'),
+                                                     output = 'df')
+test_sim
+
+## No observation
+test_no_tp_AUC <- test_sim %>%
+  group_by(ID) %>%
+  summarize(no_tp_AUC = nth(no_obs_AUC, 2), .groups = "drop")
+
+test_no_tp_AUC
+```
+
 # Compare across estimation methods
 ```{r}
-test_compare_auc <- merge(test_full_indiv_AUC, test_two_last_indiv_AUC, by = "ID")
+test_compare_auc <- merge(test_full_indiv_AUC, test_tdm_indiv_AUC, by = "ID")
 test_compare_auc <- merge(test_compare_auc, test_one_last_indiv_AUC, by = "ID")
+test_compare_auc <- merge(test_compare_auc, test_no_tp_AUC, by = "ID")
 
 test_compare_auc[] <- lapply(test_compare_auc, function(x) if(is.numeric(x)) round(x, 0) else x)
 print(test_compare_auc)
@@ -773,7 +792,7 @@ df_test_long <- test_compare_auc %>%
   pivot_longer(cols = -ID, names_to = "Method", values_to = "AUC")
 
 # Order methods for nicer plotting
-df_test_long$Method <- factor(df_test_long$Method, levels = c("full_estimation_AUC", "last_two_tp_AUC", "last_tp_AUC"))
+df_test_long$Method <- factor(df_test_long$Method, levels = c("full_estimation_AUC", "last_two_tp_AUC", "last_tp_AUC", "no_tp_AUC"))
 
 # Set common y-axis limits
 y_limits <- c(150, 450)
@@ -819,7 +838,99 @@ p_last <- ggplot(df_last, aes(x = Method, y = AUC)) +
         ) +
   scale_y_continuous(limits = y_limits)
 
-wrap_plots(p_two_tp, p_last, ncol = 2)
+# --- Full vs No Obs
+test_no_pt <- test_compare_auc %>%
+  select(ID, Full = full_tp_AUC, No_TP = no_tp_AUC) %>%
+  pivot_longer(cols = -ID, names_to = "Method", values_to = "AUC") %>%
+  mutate(Method = factor(Method, levels = c("Full", "No_TP")))  
+
+p_test_no_tp <- ggplot(test_no_pt, aes(x = Method, y = AUC)) +
+  geom_boxplot(alpha = 0.3, aes(fill = Method, color = Method)) +
+  geom_jitter(aes(color = Method), width = 0.1, alpha = 0.7, size = 2) +
+  geom_line(aes(group = ID), color = "grey60", alpha = 0.6) +
+  scale_fill_manual(values = c("Full" = "#F8766D", "No_TP" = "#C77CFF")) +
+  scale_color_manual(values = c("Full" = "#F8766D", "No_TP" = "#C77CFF")) +
+  theme_bw() +
+  labs(title = "No TP", x = "", y = "AUC") +
+  theme(legend.position = "none",
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        plot.title = element_text(hjust = 0.5)
+        ) +
+  scale_y_continuous(limits = y_limits)
+
+wrap_plots(p_two_tp, p_last, p_test_no_tp, ncol = 3)
 ```
 
+# Bias and Precision
+```{r}
+# Boxplot
+test_compare_auc <- test_compare_auc %>% 
+  mutate(two_tp_diff = (last_two_tp_AUC - full_tp_AUC) / full_tp_AUC * 100,
+         one_tp_diff = (last_tp_AUC - full_tp_AUC) / full_tp_AUC * 100,
+         no_tp_diff  = (no_tp_AUC - full_tp_AUC) / full_tp_AUC * 100,
+         )
+
+test_dose_boxplot <- test_compare_auc %>%
+  select(ID, ends_with("diff")) %>%
+  pivot_longer(-ID, names_to = "Method", values_to = "Value") %>%
+  mutate(Method = factor(Method, levels = c("two_tp_diff", "one_tp_diff", "no_tp_diff")))
+
+ggplot(test_dose_boxplot, aes(x = Method, y = Value)) +
+  geom_boxplot(alpha = 0.3, aes(fill = Method, color = Method)) +
+  geom_jitter(aes(color = Method), width = 0.1, alpha = 0.7, size = 2) +
+  theme_bw() +
+  labs(y = "Difference (%)", title = "Percentage difference across sampling schemes") +
+  theme(legend.position = "none") +
+  scale_fill_manual(values = c("two_tp_diff" = "#00BFC4", "one_tp_diff" = "#7CAE00", "no_tp_diff" = "#C77CFF")) +
+  scale_color_manual(values = c("two_tp_diff" = "#00BFC4", "one_tp_diff" = "#7CAE00", "no_tp_diff" = "#C77CFF")) 
+
+bias_prec_vals <- test_compare_auc %>%
+  summarize(
+    two_tp_bias = mean((last_two_tp_AUC - full_tp_AUC) / full_tp_AUC) * 100,
+    one_tp_bias = mean((last_tp_AUC - full_tp_AUC) / full_tp_AUC) * 100,
+    no_tp_bias  = mean((no_tp_AUC - full_tp_AUC) / full_tp_AUC) * 100,
+    two_tp_rmse = sqrt(mean(((last_two_tp_AUC - full_tp_AUC) / full_tp_AUC)^2)) * 100,
+    one_tp_rmse = sqrt(mean(((last_tp_AUC - full_tp_AUC) / full_tp_AUC)^2)) * 100,
+    no_tp_rmse  = sqrt(mean(((no_tp_AUC - full_tp_AUC) / full_tp_AUC)^2)) * 100
+  )
+
+# Convert the summarized data frame to a named list, then enframe it
+value_long <- tibble::enframe(as.list(bias_prec_vals)) %>%
+  mutate(
+    value = as.numeric(unlist(value)),  # Ensures `value` is a numeric column
+    type = ifelse(grepl("bias", name), "Bias", "RMSE"),
+    method = case_when(
+      grepl("two_tp", name) ~ "Two TP",
+      grepl("one_tp", name) ~ "One TP",
+      grepl("no_tp", name)  ~ "No TP"
+    )
+  )
+value_long <- value_long %>% mutate(method = factor(method, levels = c("Two TP", "One TP", "No TP")))
+  
+# Bias plot
+bias_plot <- value_long %>%
+  filter(type == "Bias") %>%
+  ggplot(aes(x = method, y = value, fill = method)) +
+  geom_bar(stat = "identity", width = 0.6) +
+  labs(title = "Bias by Method", y = "Bias (%)", x = NULL) +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  scale_fill_manual(values = c("Two TP" = "#00BFC4", "One TP" = "#7CAE00", "No TP" = "#C77CFF")) +
+  scale_color_manual(values = c("Two TP" = "#00BFC4", "One TP" = "#7CAE00", "No TP" = "#C77CFF")) 
+bias_plot
+
+rmse_plot <- value_long %>%
+  filter(type == "RMSE") %>%
+  ggplot(aes(x = method, y = value, fill = method)) +
+  geom_bar(stat = "identity", width = 0.6) +
+  labs(title = "RMSE by Method", y = "RMSE (%)", x = NULL) +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  scale_fill_manual(values = c("Two TP" = "#00BFC4", "One TP" = "#7CAE00", "No TP" = "#C77CFF")) +
+  scale_color_manual(values = c("Two TP" = "#00BFC4", "One TP" = "#7CAE00", "No TP" = "#C77CFF")) 
+
+rmse_plot
+```
 

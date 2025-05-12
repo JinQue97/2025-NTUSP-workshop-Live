@@ -226,11 +226,11 @@ full_tp_AUC
 ## Fit First 2
 ```{r}
 # Plasma drug concentration decline in two phases shown in semi-log plot
-busulfan_last_two_tp_dataset <- busulfan_First_Dose_dataset %>% 
+busulfan_tdm_dataset <- busulfan_First_Dose_dataset %>% 
   group_by(ID) %>%
-  filter(row_number() == 1 | row_number() == n()-1 | row_number() == n()) %>% ungroup()
+  filter(row_number() == 1 | row_number() == 2 | row_number() == n()) %>% ungroup()
   
-ggplot(busulfan_last_two_tp_dataset, aes(TIME/60, DV, group = ID, color = as.factor(ID))) +
+ggplot(busulfan_tdm_dataset, aes(TIME/60, DV, group = ID, color = as.factor(ID))) +
   geom_line() +
   geom_point() +
   theme_bw() +
@@ -238,31 +238,31 @@ ggplot(busulfan_last_two_tp_dataset, aes(TIME/60, DV, group = ID, color = as.fac
   theme(legend.position = "blank")
 
 # Model Fitting - Need MaxEval zero
-two_cmt_last_two_tp_pk_fit <- nlmixr2(
-  busulfan_final_2cmt_model,
-  busulfan_last_two_tp_dataset,
+two_cmt_tdm_pk_fit <- nlmixr2(
+  busulfan_first_dose_2cmt_model,
+  busulfan_tdm_dataset,
   "posthoc",
   control = foceiControl(maxOuterIterations=0),
   table = list(cwres = TRUE, npde = TRUE)
 )
 
-## Last Two Time Point
-orig_data <- two_cmt_last_two_tp_pk_fit$origData
-indv_cl <- data.frame(ID = two_cmt_last_two_tp_pk_fit$ID, Clearance = two_cmt_last_two_tp_pk_fit$cl)
+## TDM Point
+orig_data <- two_cmt_tdm_pk_fit$origData
+indv_cl <- data.frame(ID = two_cmt_tdm_pk_fit$ID, Clearance = two_cmt_tdm_pk_fit$cl)
 
-last_two_tp_indiv_exposure <- merge(orig_data, indv_cl, by = 'ID')
-last_two_tp_indiv_exposure <- last_two_tp_indiv_exposure %>% mutate(AUC = AMT/Clearance) %>% select(ID, AUC)
+tdm_indiv_exposure <- merge(orig_data, indv_cl, by = 'ID')
+tdm_indiv_exposure <- tdm_indiv_exposure %>% mutate(AUC = AMT/Clearance) %>% select(ID, AUC)
 
-last_two_tp_AUC <- last_two_tp_indiv_exposure %>%
+tdm_tp_AUC <- tdm_indiv_exposure %>%
   group_by(ID) %>%
-  summarize(last_two_AUC = first(AUC), .groups = "drop")
+  summarize(tdm_AUC = first(AUC), .groups = "drop")
 
-last_two_tp_AUC
+tdm_tp_AUC
 ```
 
 ## Fit First 1
 ```{r}
-last_time_point <- busulfan_last_two_tp_dataset %>% 
+last_time_point <- busulfan_tdm_dataset %>% 
   group_by(ID) %>%
   filter(row_number() == 1 | row_number() == n())
 
@@ -275,7 +275,7 @@ ggplot(last_time_point, aes(TIME/60, DV, group = ID, color = as.factor(ID))) +
 
 # Model Fitting
 two_cmt_last_tp_pk_fit <- nlmixr2(
-  busulfan_final_2cmt_model,
+  busulfan_first_dose_2cmt_model,
   last_time_point,
   "posthoc",
   control = foceiControl(maxOuterIterations=0),
@@ -307,7 +307,7 @@ no_tp_AUC
 
 ## Compare across sampling schemes
 ```{r}
-compare_auc <- merge(full_tp_AUC, last_two_tp_indiv_AUC, by = "ID")
+compare_auc <- merge(full_tp_AUC, tdm_tp_AUC, by = "ID")
 compare_auc <- merge(compare_auc, last_tp_AUC, by = "ID")
 compare_auc <- merge(compare_auc, no_tp_AUC, by = "ID")
 
@@ -319,14 +319,14 @@ df_long <- compare_auc %>%
   pivot_longer(cols = -ID, names_to = "Method", values_to = "AUC")
 
 # Order methods for nicer plotting
-df_long$Method <- factor(df_long$Method, levels = c("full_tp_AUC", "last_two_AUC", "last_tp_AUC", "no_tp_AUC"))
+df_long$Method <- factor(df_long$Method, levels = c("full_tp_AUC", "tdm_AUC", "last_tp_AUC", "no_tp_AUC"))
 
 # Set common y-axis limits
 y_limits <- c(750, 1750)
 
 # --- Full vs Two TP
 df_last_two <- compare_auc %>%
-  select(ID, Full = full_tp_AUC, Two_TP = last_two_AUC) %>%
+  select(ID, Full = full_tp_AUC, Two_TP = tdm_AUC) %>%
   pivot_longer(cols = -ID, names_to = "Method", values_to = "AUC") %>%
   mutate(Method = factor(Method, levels = c("Full", "Two_TP")))  
 
@@ -367,18 +367,18 @@ p_last <- ggplot(df_last, aes(x = Method, y = AUC)) +
 
 # --- Full vs No TP
 df_no <- compare_auc %>%
-  select(ID, Full = full_tp_AUC, No_Obs = no_tp_AUC) %>%
+  select(ID, Full = full_tp_AUC, No_TP = no_tp_AUC) %>%
   pivot_longer(cols = -ID, names_to = "Method", values_to = "AUC") %>%
-  mutate(Method = factor(Method, levels = c("Full", "No_Obs")))  
+  mutate(Method = factor(Method, levels = c("Full", "No_TP")))  
 
 p_no <- ggplot(df_no, aes(x = Method, y = AUC)) +
   geom_boxplot(alpha = 0.3, aes(fill = Method, color = Method)) +
   geom_jitter(aes(color = Method), width = 0.1, alpha = 0.7, size = 2) +
   geom_line(aes(group = ID), color = "grey60", alpha = 0.6) +
-  scale_fill_manual(values = c("Full" = "#F8766D", "No_Obs" = "#C77CFF")) +
-  scale_color_manual(values = c("Full" = "#F8766D", "No_Obs" = "#C77CFF")) +
+  scale_fill_manual(values = c("Full" = "#F8766D", "No_TP" = "#C77CFF")) +
+  scale_color_manual(values = c("Full" = "#F8766D", "No_TP" = "#C77CFF")) +
   theme_bw() +
-  labs(title = "No Obs", x = "", y = "AUC") +
+  labs(title = "No TP", x = "", y = "AUC") +
   theme(legend.position = "none",
         axis.title.y = element_blank(),
         axis.text.y = element_blank(),
@@ -391,3 +391,73 @@ wrap_plots(p_last_two, p_last, p_no, ncol = 3)
 ```
 
 
+## Bias and Precision
+```{r}
+# Boxplot
+compare_auc <- compare_auc %>% 
+  mutate(two_tp_diff = (tdm_AUC - full_tp_AUC) / full_tp_AUC * 100,
+         one_tp_diff = (last_tp_AUC - full_tp_AUC) / full_tp_AUC * 100,
+         no_tp_diff  = (no_tp_AUC - full_tp_AUC) / full_tp_AUC * 100,
+         )
+
+first_dose_boxplot <- compare_auc %>%
+  select(ID, ends_with("diff")) %>%
+  pivot_longer(-ID, names_to = "Method", values_to = "Value") %>%
+  mutate(Method = factor(Method, levels = c("two_tp_diff", "one_tp_diff", "no_tp_diff")))
+
+ggplot(first_dose_boxplot, aes(x = Method, y = Value)) +
+  geom_boxplot(alpha = 0.3, aes(fill = Method, color = Method)) +
+  geom_jitter(aes(color = Method), width = 0.1, alpha = 0.7, size = 2) +
+  theme_bw() +
+  labs(y = "Difference (%)", title = "Percentage difference across sampling schemes") +
+  theme(legend.position = "none") +
+  scale_fill_manual(values = c("two_tp_diff" = "#00BFC4", "one_tp_diff" = "#7CAE00", "no_tp_diff" = "#C77CFF")) +
+  scale_color_manual(values = c("two_tp_diff" = "#00BFC4", "one_tp_diff" = "#7CAE00", "no_tp_diff" = "#C77CFF")) 
+
+first_bias_prec_vals <- compare_auc %>%
+  summarize(
+    two_tp_bias = mean((tdm_AUC - full_tp_AUC) / full_tp_AUC) * 100,
+    one_tp_bias = mean((last_tp_AUC - full_tp_AUC) / full_tp_AUC) * 100,
+    no_tp_bias  = mean((no_tp_AUC - full_tp_AUC) / full_tp_AUC) * 100,
+    two_tp_rmse = sqrt(mean(((tdm_AUC - full_tp_AUC) / full_tp_AUC)^2)) * 100,
+    one_tp_rmse = sqrt(mean(((last_tp_AUC - full_tp_AUC) / full_tp_AUC)^2)) * 100,
+    no_tp_rmse  = sqrt(mean(((no_tp_AUC - full_tp_AUC) / full_tp_AUC)^2)) * 100
+  )
+
+# Convert the summarized data frame to a named list, then enframe it
+first_value_long <- tibble::enframe(as.list(first_bias_prec_vals)) %>%
+  mutate(
+    value = as.numeric(unlist(value)),  # Ensures `value` is a numeric column
+    type = ifelse(grepl("bias", name), "Bias", "RMSE"),
+    method = case_when(
+      grepl("two_tp", name) ~ "Two TP",
+      grepl("one_tp", name) ~ "One TP",
+      grepl("no_tp", name)  ~ "No TP"
+    )
+  )
+first_value_long <- first_value_long %>% mutate(method = factor(method, levels = c("Two TP", "One TP", "No TP")))
+  
+# Bias plot
+first_bias_plot <- first_value_long %>%
+  filter(type == "Bias") %>%
+  ggplot(aes(x = method, y = value, fill = method)) +
+  geom_bar(stat = "identity", width = 0.6) +
+  labs(title = "Bias by Method", y = "Bias (%)", x = NULL) +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  scale_fill_manual(values = c("Two TP" = "#00BFC4", "One TP" = "#7CAE00", "No TP" = "#C77CFF")) +
+  scale_color_manual(values = c("Two TP" = "#00BFC4", "One TP" = "#7CAE00", "No TP" = "#C77CFF")) 
+first_bias_plot
+
+first_rmse_plot <- first_value_long %>%
+  filter(type == "RMSE") %>%
+  ggplot(aes(x = method, y = value, fill = method)) +
+  geom_bar(stat = "identity", width = 0.6) +
+  labs(title = "RMSE by Method", y = "RMSE (%)", x = NULL) +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  scale_fill_manual(values = c("Two TP" = "#00BFC4", "One TP" = "#7CAE00", "No TP" = "#C77CFF")) +
+  scale_color_manual(values = c("Two TP" = "#00BFC4", "One TP" = "#7CAE00", "No TP" = "#C77CFF")) 
+
+first_rmse_plot
+```
