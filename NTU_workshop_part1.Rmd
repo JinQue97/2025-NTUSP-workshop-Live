@@ -1,0 +1,651 @@
+---
+title: "2025 National Taiwan University - Population Pharmacokinetics workshop"
+output: 
+  html_document:
+    css: docs/src/styles/styles.css
+    toc: true
+    number_sections: true
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(comment='.', echo = TRUE, warning = FALSE)
+rm(list=ls())
+```
+
+# Load Packages
+```{r echo=TRUE}
+library(renv)
+library(tidyverse)
+library(ggplot2)
+library(nlmixr2)
+library(xpose4)
+library(xpose.nlmixr2)
+library(rxode2)
+library(gridExtra)
+library(ggPMX)
+library(ggpubr)
+```
+
+# Data exploration
+```{r}
+# Import busulfan two compartment dataset
+busulfan_dataset <- read.csv("dataset/busulfan_Test_Dose.csv", na.strings = ".")
+
+# Plasma drug concentration decline in two phases shown in semi-log plot
+ggplot(busulfan_dataset, aes(TIME/60, log(DV), group = ID, color = as.factor(ID))) +
+  geom_line() +
+  theme_bw() +
+  labs(title = "Busulfan semi-log plot", x = "Time (hours)", y = "Conc (mg/L)") +
+  theme(legend.position = "blank")
+```
+
+# Showcase 1. 1-cmt vs 2-cmt
+
+## Fitting with 1-cmt vs 2-cmt
+```{r}
+# One compartment model structure
+busulfan_1cmt_base_model <- function() {
+  ini({
+    # Typical value (THETAs)
+    tvcl   <- log(5)
+    tvv1  <- log(50)
+    
+    # Interindividual variability (OMEGAs)
+    eta_cl  ~ 0.0322
+    eta_v1  ~ 0.0222
+    
+    # Residual variability
+    add.error <-  0.0955
+  })
+  
+  model({
+    # Individual value
+    cl <- exp(tvcl + eta_cl)
+    v1 <- exp(tvv1 + eta_v1)
+
+    # Conversion
+    k10 <- cl / v1
+    
+    # ODEs
+    d / dt(central) = -k10 * central
+    
+    # Concentration
+    cp = central / v1
+    
+    # Error model
+    IPRED = cp
+    IPRED ~ add(add.error)
+  })
+}
+
+# Two compartment model structure
+busulfan_2cmt_base_model <- function() {
+  ini({
+    # Typical value (THETAs)
+    tvcl   <- log(0.187)
+    tvv1  <- log(29)
+    tvq   <- log(0.41)
+    tvv2  <- log(17.3)
+    
+    # Interindividual variability (OMEGAs)
+    eta_cl  ~ 0.0222 
+    eta_v1  ~ 0.0222
+    eta_v2  ~ 0.0241
+    
+    # Residual variability
+    prop.err <-  0.0955
+  })
+  
+  model({
+    # Individual parameters
+    cl <- exp(tvcl + eta_cl) 
+    v1 <- exp(tvv1 + eta_v1)
+    q  <- exp(tvq)
+    v2 <- exp(tvv2 + eta_v2)
+    
+    # Conversion
+    k10 <- cl / v1
+    k12 <- q / v1
+    k21 <- q / v2
+    
+    # ODEs
+    d / dt(central) = -k10 * central - k12 * central + k21 * peripheral
+    d / dt(peripheral) = -k21 * peripheral + k12 * central
+    
+    # Concentration
+    cp = central / v1
+    
+    # Error model
+    IPRED = cp
+    IPRED ~ prop(prop.err)
+  })
+}
+
+# 1 compartment model fitting 
+one_cmt_pk_fit <- nlmixr2(
+  busulfan_1cmt_base_model,
+  busulfan_dataset,
+  "focei",
+  table = list(cwres = TRUE)
+)
+
+# 2 compartment model fitting 
+two_cmt_pk_fit <- nlmixr2(
+  busulfan_2cmt_base_model,
+  busulfan_dataset,
+  "focei",
+  table = list(cwres = TRUE)
+)
+```
+
+
+## Model diagnostics - Objective Function Values
+```{r}
+# Extract Objective Functions
+one_cmt_objDf <- one_cmt_pk_fit$objDf
+two_cmt_objDf <- two_cmt_pk_fit$objDf
+
+
+compare_obj <- rbind(one_cmt_objDf, two_cmt_objDf)
+rownames(compare_obj) <- c("1-cmt", "2-cmt") 
+compare_obj[,1:4]
+```
+
+## Model diagnostics - Goodness of Fit (GOF)
+```{r}
+# Convert to XPOSE for goodness of fit
+one_cmt_xpdb_pk <- xpose_data_nlmixr2(one_cmt_pk_fit,
+                                     xp_theme = theme_xp_nlmixr2()
+                                     )
+
+two_cmt_xpdb_pk <- xpose_data_nlmixr2(two_cmt_pk_fit,
+                                     xp_theme = theme_xp_nlmixr2()
+                                     )
+
+# observation vs population prediction plot
+one_cmt_dv_pred <- dv_vs_pred(one_cmt_xpdb_pk, 
+                              type="pls", 
+                              title = "One Compartment",
+                              log   = 'xy',
+                              subtitle = NULL,
+                              guide = TRUE) +
+  labs(x = 'PRED (mg/L)', y = 'DV (mg/L)')
+
+two_cmt_dv_pred <- dv_vs_pred(two_cmt_xpdb_pk, 
+                              type="pls", 
+                              title = "Two Compartment",
+                              log   = 'xy',
+                              subtitle = NULL,
+                              guide = TRUE) +
+  labs(x = 'PRED (mg/L)', y = 'DV (mg/L)')
+
+grid.arrange(one_cmt_dv_pred, two_cmt_dv_pred, nrow = 1)
+
+# observation vs individual prediction plot
+one_cmt_dv_ipred <- dv_vs_ipred(one_cmt_xpdb_pk, 
+                                group="ID",
+                                title = "One Compartment",
+                                log   = 'xy',
+                                subtitle = NULL,
+                                guide = TRUE
+                                ) +
+  labs(x = 'IPRED (mg/L)', y = 'DV (mg/L)')
+
+two_cmt_dv_ipred <- dv_vs_ipred(two_cmt_xpdb_pk, 
+                                group="ID",
+                                title = "Two Compartment",
+                                log   = 'xy',
+                                subtitle = NULL,
+                                guide = TRUE
+                                ) +
+  labs(x = 'IPRED (mg/L)', y = 'DV (mg/L)')
+
+grid.arrange(one_cmt_dv_ipred, two_cmt_dv_ipred, nrow = 1)
+
+# IPRED vs TIME
+one_cmt_ipred_time <- pred_vs_idv(one_cmt_xpdb_pk, 
+                                 group="ID",
+                                 title = "One Compartment",
+                                 subtitle = NULL,
+                                 guide = TRUE
+                                 ) +
+  labs(x = 'Time (minutes)', y = 'IPRED (mg/L)')
+
+two_cmt_ipred_time <- pred_vs_idv(two_cmt_xpdb_pk, 
+                                 group="ID",
+                                 title = "Two Compartment",
+                                 subtitle = NULL,
+                                 guide = TRUE
+                                 ) +
+  labs(x = 'Time (minutes)', y = 'IPRED (mg/L)')
+
+grid.arrange(one_cmt_ipred_time, two_cmt_ipred_time, nrow = 1)
+
+# residual error vs population prediction plot
+one_cmt_cwres_pred <- res_vs_pred(one_cmt_xpdb_pk, 
+                                  res="CWRES", 
+                                  type="ps",
+                                  title = "One Compartment",
+                                  subtitle = NULL,
+                                  guide = TRUE
+                                  ) +
+  labs(x = 'PRED (mg/L)', y = 'CWRES')
+
+two_cmt_cwres_pred <- res_vs_pred(two_cmt_xpdb_pk, 
+                                  res="CWRES", 
+                                  type="ps",
+                                  title = "Two Compartment",
+                                  subtitle = NULL,
+                                  guide = TRUE
+                                  ) +
+  labs(x = 'PRED (mg/L)', y = 'CWRES')
+
+grid.arrange(one_cmt_cwres_pred, two_cmt_cwres_pred, nrow = 1)
+```
+
+## Two-cmt model parameters
+```{r}
+# Parameter estimates - Fixed + RUV
+two_cmt_pk_fit$parFixedDf %>% select(`Back-transformed`, `%RSE`, `Shrink(SD)%`) %>% rename(Parameters = `Back-transformed`)
+
+# IIV
+two_cmt_pk_fit$omega
+```
+
+
+# Showcase 2. Error model (Additive vs Proporational vs Combined) 
+
+## Fitting with proportional vs combined vs additive error
+```{r}
+# Two compartment model with additive model
+busulfan_2cmt_add_model <- function() {
+  ini({
+    # Typical value (THETAs)
+    tvcl   <- log(0.187)
+    tvv1  <- log(29)
+    tvq   <- log(0.41)
+    tvv2  <- log(17.3)
+    
+    # Interindividual variability (OMEGAs)
+    eta_cl  ~ 0.0222 
+    eta_v1  ~ 0.0222
+    eta_v2  ~ 0.0241
+    
+    # Residual variability
+    add.err <-  0.0955
+  })
+  
+  model({
+    # Individual parameters
+    cl <- exp(tvcl + eta_cl) 
+    v1 <- exp(tvv1 + eta_v1)
+    q  <- exp(tvq)
+    v2 <- exp(tvv2 + eta_v2)
+    
+    # Conversion
+    k10 <- cl / v1
+    k12 <- q / v1
+    k21 <- q / v2
+    
+    # ODEs
+    d / dt(central) = -k10 * central - k12 * central + k21 * peripheral
+    d / dt(peripheral) = -k21 * peripheral + k12 * central
+    
+    # Concentration
+    cp = central / v1
+    
+    # Error model (on log scale)
+    IPRED = cp
+    IPRED ~ add(add.err)
+  })
+}
+
+# additive model fitting 
+two_cmt_add_pk_fit <- nlmixr2(
+  busulfan_2cmt_add_model,
+  busulfan_dataset,
+  "focei",
+  table = list(cwres = TRUE)
+)
+
+# Two compartment model with combined
+busulfan_2cmt_combined_model <- function() {
+  ini({
+    # Typical value (THETAs)
+    tvcl   <- log(0.187)
+    tvv1  <- log(29)
+    tvq   <- log(0.41)
+    tvv2  <- log(17.3)
+    
+    # Interindividual variability (OMEGAs)
+    eta_cl  ~ 0.0222 
+    eta_v1  ~ 0.0222
+    eta_v2  ~ 0.0241
+    
+    # Residual variability
+    prop.err <-  0.0955
+    add.err  <-  0.02
+  })
+  
+  model({
+    # Individual parameters
+    cl <- exp(tvcl + eta_cl) 
+    v1 <- exp(tvv1 + eta_v1)
+    q  <- exp(tvq)
+    v2 <- exp(tvv2 + eta_v2)
+    
+    # Conversion
+    k10 <- cl / v1
+    k12 <- q / v1
+    k21 <- q / v2
+    
+    # ODEs
+    d / dt(central) = -k10 * central - k12 * central + k21 * peripheral
+    d / dt(peripheral) = -k21 * peripheral + k12 * central
+    
+    # Concentration
+    cp = central / v1
+    
+    # Error model (on log scale)
+    IPRED = cp
+    IPRED ~ prop(prop.err) + add(add.err)
+  })
+}
+
+# combined model fitting 
+two_cmt_combined_pk_fit <- nlmixr2(
+  busulfan_2cmt_combined_model,
+  busulfan_dataset,
+  "focei",
+  table = list(cwres = TRUE)
+  )
+```
+
+## Model diagnostics - Objective Function Values
+```{r}
+# Extract Objective Functions
+two_cmt_add_objDf <- two_cmt_add_pk_fit$objDf 
+two_cmt_prop_objDf  <- two_cmt_pk_fit$objDf
+two_cmt_comb_objDf <- two_cmt_combined_pk_fit$objDf
+
+error_compare_obj <- rbind(two_cmt_add_objDf, two_cmt_prop_objDf, two_cmt_comb_objDf)
+rownames(error_compare_obj) <- c("Additive", "Proportional", "Combined") 
+error_compare_obj
+```
+
+
+
+```{r}
+# Convert to XPOSE for goodness of fit
+
+two_cmt_add_xpdb_pk <- xpose_data_nlmixr2(two_cmt_add_pk_fit,
+                                     xp_theme = theme_xp_nlmixr2()
+                                     )
+
+two_cmt_combined_xpdb_pk <- xpose_data_nlmixr2(two_cmt_combined_pk_fit,
+                                     xp_theme = theme_xp_nlmixr2()
+                                     )
+
+# observation vs prediction plot
+add_error_dv_pred <- dv_vs_pred(two_cmt_add_xpdb_pk, 
+                                group="ID",
+                                title = "Additive Error",
+                                #log = "xy",
+                                subtitle = NULL,
+                                guide = FALSE
+                                ) +
+  labs(x = 'PRED (mg/L)', y = 'DV (mg/L)')
+
+prop_error_dv_pred <- dv_vs_pred(two_cmt_xpdb_pk, 
+                                group="ID",
+                                title = "Proportional Error",
+                                #log = "xy",
+                                subtitle = NULL,
+                                guide = FALSE
+                                ) +
+  labs(x = 'PRED (mg/L)', y = 'DV (mg/L)')
+
+comb_error_dv_pred <- dv_vs_pred(two_cmt_combined_xpdb_pk, 
+                                group="ID",
+                                title = "Combined Error",
+                                #log = "xy",
+                                subtitle = NULL,
+                                guide = FALSE
+                                ) +
+  labs(x = 'PRED (mg/L)', y = 'DV (mg/L)')
+
+grid.arrange(add_error_dv_pred, prop_error_dv_pred, comb_error_dv_pred, nrow = 1)
+
+# residual error vs population prediction plot
+add_error_cwres <- res_vs_pred(two_cmt_add_xpdb_pk, 
+                                  res="CWRES", 
+                                  type="ps",
+                                  title = "Additive error",
+                                  subtitle = NULL,
+                                  guide = TRUE
+                                  ) +
+  labs(x = 'PRED (mg/L)', y = 'CWRES')
+
+prop_error_cwres <- res_vs_pred(two_cmt_xpdb_pk, 
+                                  res="CWRES", 
+                                  type="ps",
+                                  title = "Proportioanl error",
+                                  subtitle = NULL,
+                                  guide = TRUE
+                                  ) +
+  labs(x = 'PRED (mg/L)', y = 'CWRES')
+
+
+comb_error_cwres <- res_vs_pred(two_cmt_combined_xpdb_pk, 
+                                  res="CWRES", 
+                                  type="ps",
+                                  title = "Combined error",
+                                  subtitle = NULL,
+                                  guide = TRUE
+                                  )+
+  labs(x = 'PRED (mg/L)', y = 'CWRES')
+
+grid.arrange(add_error_cwres, prop_error_cwres, comb_error_cwres, nrow = 1)
+```
+
+## Two-cmt model parameters
+```{r}
+# Parameter estimates - Fixed + RUV
+two_cmt_pk_fit$parFixedDf %>% select(`Back-transformed`, `%RSE`, `Shrink(SD)%`) %>% rename(Parameters = `Back-transformed`)
+
+# Parameter estimates - Fixed + RUV
+two_cmt_combined_pk_fit$parFixedDf %>% select(`Back-transformed`, `%RSE`, `Shrink(SD)%`) %>% rename(Parameters = `Back-transformed`)
+
+```
+
+# Showcase 3. Covariates to explain Inter-Individual Variability
+
+## Omegas and Etas - Distribution of individual parameters
+```{r}
+# Parameter estimates - Fixed + RUV
+two_cmt_pk_fit$parFixedDf %>% select(`Back-transformed`, `%RSE`, `Shrink(SD)%`) %>% rename(Parameters = `Back-transformed`)
+
+base_combined_dataset <- merge(two_cmt_pk_fit, busulfan_dataset, by = c("ID", "TIME", "DV"))
+
+# Sex as covariates
+cov_sex_cl <- ggplot(base_combined_dataset, aes(as.factor(Sex), eta_cl)) + 
+  geom_boxplot() +
+  stat_compare_means(method = "wilcox.test", label = "p.format") +
+  theme_bw() +
+  labs(title = "CL vs Sex", x = "Sex")
+
+cov_sex_v1 <- ggplot(base_combined_dataset, aes(as.factor(Sex), eta_v1)) + 
+  geom_boxplot() +
+  stat_compare_means(method = "wilcox.test", label = "p.format") +
+  theme_bw() +
+  labs(title = "V1 vs Sex", x = "Sex")
+
+cov_sex_v2 <- ggplot(base_combined_dataset, aes(as.factor(Sex), eta_v2)) + 
+  geom_boxplot() +
+  stat_compare_means(method = "wilcox.test", label = "p.format") +
+  theme_bw() +
+  labs(title = "V2 vs Sex", x = "Sex")
+
+grid.arrange(cov_sex_cl, cov_sex_v1, cov_sex_v2, nrow = 1)
+
+# BSA as covariates
+cov_bsa_cl <- ggplot(base_combined_dataset, aes(BSA, eta_cl)) + 
+  geom_point() +
+  geom_smooth(method = "lm", se = TRUE) +
+  stat_cor(method = "pearson", 
+           aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~"))) +
+  theme_bw() +
+  labs(title = "CL vs BSA", x = "BSA")
+
+cov_bsa_v1 <- ggplot(base_combined_dataset, aes(BSA, eta_v1)) + 
+  geom_point() +
+  geom_smooth(method = "lm", se = TRUE) +
+  stat_cor(method = "pearson", 
+           aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~"))) +
+  theme_bw() +
+  labs(title = "V1 vs BSA", x = "BSA")
+
+cov_bsa_v2 <- ggplot(base_combined_dataset, aes(BSA, eta_v2)) + 
+  geom_point() +
+  geom_smooth(method = "lm", se = TRUE) +
+  stat_cor(method = "pearson", 
+           aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~"))) +
+  theme_bw() +
+  labs(title = "V2 vs BSA", x = "BSA")
+
+grid.arrange(cov_bsa_cl, cov_bsa_v1, cov_bsa_v2, nrow = 1)
+
+```
+
+
+## Run covariate model
+```{r}
+busulfan_final_2cmt_model <- function() {
+  ini({
+    # Typical value (THETAs)
+    tvcl   <- log(0.187)
+    tvv1  <- log(29)
+    tvq   <- log(0.41)
+    tvv2  <- log(17.3)
+    
+    covbsav1 <- log(2.32)
+    covbsacl <- log(1.30)
+    covsexv2 <- log(0.8)
+    
+    # Interindividual variability (OMEGAs)
+    eta_cl  ~ 0.0222 
+    eta_v1  ~ 0.0222
+    eta_v2  ~ 0.0241
+    
+    # Residual variability
+    prop.err <-  0.0955
+  })
+  
+  model({
+    # Individual value
+    cl <- exp(tvcl + eta_cl) * (BSA/2.01)^covbsacl
+    v1 <- exp(tvv1 + eta_v1) * (BSA/2.01)^covbsav1
+    q  <- exp(tvq)
+    v2 <- exp(tvv2 + eta_v2)
+    
+    # Sex effect
+    if (Sex == 1) {
+      v2 <- v2 * covsexv2
+    } else {
+      v2 <- v2 * 1
+    }
+    
+    # Conversion
+    k10 <- cl / v1
+    k12 <- q / v1
+    k21 <- q / v2
+    
+    # ODEs
+    d / dt(central) = -k10 * central - k12 * central + k21 * peripheral
+    d / dt(peripheral) = -k21 * peripheral + k12 * central
+    
+    # Concentration
+    cp = central / v1
+    
+    # Error model (on log scale)
+    IPRED = cp
+    IPRED ~ prop(prop.err)
+  })
+}
+
+# Model Fitting
+two_cmt_final_pk_fit <- nlmixr2(
+  busulfan_final_2cmt_model,
+  busulfan_dataset,
+  "focei",
+  table = list(cwres = TRUE, npde = TRUE)
+)
+```
+
+```{r}
+final_combined_dataset <- merge(two_cmt_final_pk_fit, busulfan_dataset, by = c("ID", "TIME", "DV", "BSA", "Sex"))
+
+# Sex as covariates
+cov_sex_cl <- ggplot(final_combined_dataset, aes(as.factor(Sex), eta_cl)) + 
+  geom_boxplot() +
+  stat_compare_means(method = "wilcox.test", label = "p.format") +
+  theme_bw() +
+  labs(title = "CL vs Sex", x = "Sex")
+
+cov_sex_v1 <- ggplot(final_combined_dataset, aes(as.factor(Sex), eta_v1)) + 
+  geom_boxplot() +
+  stat_compare_means(method = "wilcox.test", label = "p.format") +
+  theme_bw() +
+  labs(title = "V1 vs Sex", x = "Sex")
+
+cov_sex_v2 <- ggplot(final_combined_dataset, aes(as.factor(Sex), eta_v2)) + 
+  geom_boxplot() +
+  stat_compare_means(method = "wilcox.test", label = "p.format") +
+  theme_bw() +
+  labs(title = "V2 vs Sex", x = "Sex")
+
+grid.arrange(cov_sex_cl, cov_sex_v1, cov_sex_v2, nrow = 1)
+
+# BSA as covariates
+cov_bsa_cl <- ggplot(final_combined_dataset, aes(BSA, eta_cl)) + 
+  geom_point() +
+  geom_smooth(method = "lm", se = TRUE) +
+  stat_cor(method = "pearson", 
+           aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~"))) +
+  theme_bw() +
+  labs(title = "CL vs BSA", x = "BSA")
+
+cov_bsa_v1 <- ggplot(final_combined_dataset, aes(BSA, eta_v1)) + 
+  geom_point() +
+  geom_smooth(method = "lm", se = TRUE) +
+  stat_cor(method = "pearson", 
+           aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~"))) +
+  theme_bw() +
+  labs(title = "V1 vs BSA", x = "BSA")
+
+cov_bsa_v2 <- ggplot(final_combined_dataset, aes(BSA, eta_v2)) + 
+  geom_point() +
+  geom_smooth(method = "lm", se = TRUE) +
+  stat_cor(method = "pearson", 
+           aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~"))) +
+  theme_bw() +
+  labs(title = "V2 vs BSA", x = "BSA")
+
+grid.arrange(cov_bsa_cl, cov_bsa_v1, cov_bsa_v2, nrow = 1)
+```
+
+```{r}
+## Two-cmt model parameters
+# Parameter estimates - Fixed + RUV
+
+# Compare etas between base vs final
+print("Base Model etas")
+two_cmt_pk_fit$omega
+
+print("Final Model etas")
+two_cmt_final_pk_fit$omega
+
+# Final model parameters
+two_cmt_final_pk_fit$parFixedDf %>% select(`Back-transformed`, `%RSE`, `Shrink(SD)%`) %>% rename(Parameters = `Back-transformed`)
+```
+```
+

@@ -1,0 +1,503 @@
+---
+title: "2025 National Taiwan University - Population Pharmacokinetics workshop"
+output: 
+  html_document:
+    css: docs/src/styles/styles.css
+    toc: true
+    number_sections: true
+---
+# Load Packages
+Here we will import our installed packages into our R environment
+```{r echo=TRUE}
+library(renv)
+library(tidyverse)
+library(ggplot2)
+library(nlmixr2)
+library(xpose4)
+library(xpose.nlmixr2)
+library(rxode2)
+library(gridExtra)
+library(ggPMX)
+library(ggpubr)
+library(mrgsolve)
+library(vpc)
+library(patchwork)
+```
+
+# Dataset
+```{r}
+# Import busulfan two compartment dataset
+busulfan_First_Dose_dataset <- read.csv("dataset/busulfan_First_Dose.csv", na.strings = ".")
+
+busulfan_TDM_dataset <- busulfan_First_Dose_dataset %>% 
+  group_by(ID) %>%
+  filter(row_number() == 1 | row_number() == 2 | row_number() == n())
+```
+
+# Showcase 4
+## Overlay First Dose data with the built model - Individual fits
+```{r}
+model_code <- 'model/busulfan_test_dose_model.mod'
+mod <- mread('busulfan_test_dose', file = model_code)
+
+sim <- function(rep, data, model,
+                recover = c('AMT', 'DV', 'Sex', 'BSA')) {
+  mrgsim(
+    model, 
+    data = data,
+    recover = recover,
+    Req = c('CP_no_RUV', 'CP', 'no_obs_AUC'),
+    output = 'df',
+  ) %>% mutate(irep = rep)
+}
+
+isim <- seq(1000)
+
+set.seed(86486)
+
+sims <- lapply(
+  isim, sim, 
+  data = busulfan_First_Dose_dataset, 
+  mod = mod
+) %>% bind_rows()
+
+indv_fits <- sims %>% filter(irep == 1)
+
+p1 <- ggplot() +
+  geom_line(data = indv_fits, aes(TIME/60, CP_no_RUV, group = ID)) +
+  geom_point(data = busulfan_TDM_dataset, aes(TIME/60, DV, group = ID)) +
+  facet_wrap_paginate(~ID, nrow = 4, ncol = 4, page = 1) +
+  xlim(2.5, 10) +
+  labs(x = 'Time (horus)',  y = "Busulfan Concentration (mg/L)") +
+  theme_bw()
+
+p2 <- ggplot() +
+  geom_line(data = indv_fits, aes(TIME/60, CP_no_RUV, group = ID)) +
+  geom_point(data = busulfan_TDM_dataset, aes(TIME/60, DV, group = ID)) +
+  facet_wrap_paginate(~ID, nrow = 4, ncol = 4, page = 2) +
+  xlim(2.5, 10) +
+  labs(x = 'Time (horus)',  y = "Busulfan Concentration (mg/L)") +
+  theme_bw()
+
+p1
+p2
+```
+
+## Overlay First Dose data with the built model - pcVPC
+```{r}
+mrg_vpc_theme = new_vpc_theme(list(
+  sim_pi_fill = "steelblue3", sim_pi_alpha = 0.5,
+  sim_median_fill = "grey60", sim_median_alpha = 0.5
+))
+
+vpc_plot <- vpc(obs = busulfan_TDM_dataset,
+          obs_cols = list(dv = 'DV',
+                          idv = 'TIME',
+                          id = 'ID'
+                          ),
+          sim = sims, 
+          bins = "pretty",
+          n_bins = 10,
+          sim_cols = list(dv = 'CP',
+                          idv = 'TIME',
+                          id = 'ID',
+                          sim = 'irep'
+                          ),
+          #log_y = TRUE,
+          #stratify = 'DOSCOV',
+          pi = c(0.025, 0.975),
+          ci = c(0.025, 0.975),
+          show = list(obs_dv = TRUE
+                      #obs_ci = FALSE
+                      #obs_median = FALSE
+                      ),
+          vpc_theme = mrg_vpc_theme,
+          ylab  = 'Busuflan Concentration (mg/L)',
+          xlab  = 'Time (hours)',
+          title = "Prediction-Corrected Visual Predictive Check - pcVPC"
+          ) + 
+  theme_bw() +
+  scale_x_continuous(limits = c(150, 600),
+                     breaks = seq(0, 650, by = 30),
+                     labels = function(x) x / 60)
+
+vpc_plot +
+  # Add dummy geoms to create legend entries
+  geom_rect(aes(xmin = 0, xmax = 0, ymin = 0, ymax = 0, fill = "PI (95%)"), alpha = 0.5) +
+  geom_rect(aes(xmin = 0, xmax = 0, ymin = 0, ymax = 0, fill = "Median"), alpha = 0.5) +
+  
+  # Define manual fill scale
+  scale_fill_manual(name = "Simulated Data", 
+                    values = c("PI (95%)" = "steelblue3", "Median" = "grey60")) +
+  
+  # Customize the legend position inside plot
+  theme(
+    legend.position = c(0.90, 0.80),   # x and y coordinates (0~1 scale)
+    legend.background = element_rect(fill = "white", color = "black"),
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 9)
+  ) +
+  
+  guides(fill = guide_legend(override.aes = list(alpha = 0.5)))
+```
+
+## Estimating Individual exposure with TDM
+```{r}
+# Plasma drug concentration decline in two phases shown in semi-log plot
+ggplot(busulfan_TDM_dataset, aes(TIME/60, DV, group = ID, color = as.factor(ID))) +
+  geom_line() +
+  geom_point() +
+  theme_bw() +
+  labs(title = "Busulfan First Dose semi-log plot", x = "Time (hours)", y = "Conc (mg/L)") +
+  theme(legend.position = "blank")
+```
+
+
+## model fit
+```{r}
+busulfan_final_2cmt_model <- function() {
+  ini({
+    # Typical value (THETAs)
+    tvcl   <- log(0.181)
+    tvv1  <- log(25.34)
+    tvq   <- log(0.355)
+    tvv2  <- log(17.52)
+    
+    covbsav1 <- log(1.49)
+    covbsacl <- log(1.03)
+    covsexv2 <- log(0.757)
+    
+    # Interindividual variability (OMEGAs)
+    eta_cl  ~ 0.0327
+    eta_v1  ~ 0.0111
+    eta_v2  ~ 0.0237
+    
+    # Residual variability
+    prop.err <-  0.05313
+  })
+  
+  model({
+    # Individual value
+    cl <- exp(tvcl + eta_cl) * (BSA/2.01)^covbsacl
+    v1 <- exp(tvv1 + eta_v1) * (BSA/2.01)^covbsav1
+    q  <- exp(tvq)
+    v2 <- exp(tvv2 + eta_v2)
+    
+    # Sex effect
+    if (Sex == 1) {
+      v2 <- v2 * covsexv2
+    } else {
+      v2 <- v2 * 1
+    }
+    
+    # Conversion
+    k10 <- cl / v1
+    k12 <- q / v1
+    k21 <- q / v2
+    
+    # ODEs
+    d / dt(central) = -k10 * central - k12 * central + k21 * peripheral
+    d / dt(peripheral) = -k21 * peripheral + k12 * central
+    
+    # Concentration
+    cp = central / v1
+    
+    # Error model (on log scale)
+    IPRED = cp
+    IPRED ~ prop(prop.err)
+  })
+}
+
+# Model Fitting - Need MaxEval zero
+two_cmt_TDM_pk_fit <- nlmixr2(
+  busulfan_final_2cmt_model,
+  busulfan_TDM_dataset,
+  "posthoc",
+  control = foceiControl(maxOuterIterations=0),
+  table = list(cwres = TRUE, npde = TRUE)
+)
+```
+
+## Estimating individual exposures with last time point
+```{r}
+last_time_point <- busulfan_TDM_dataset %>% 
+  group_by(ID) %>%
+  filter(row_number() == 1 | row_number() == 3)
+
+# Plasma drug concentration decline in two phases shown in semi-log plot
+ggplot(last_time_point, aes(TIME/60, DV, group = ID, color = as.factor(ID))) +
+  geom_point() +
+  theme_bw() +
+  labs(title = "Busulfan First Dose semi-log plot", x = "Time (hours)", y = "Conc (mg/L)") +
+  theme(legend.position = "blank")
+```
+
+## model fit
+```{r}
+busulfan_final_2cmt_model <- function() {
+  ini({
+    # Typical value (THETAs)
+    tvcl   <- log(0.181)
+    tvv1  <- log(25.34)
+    tvq   <- log(0.355)
+    tvv2  <- log(17.52)
+    
+    covbsav1 <- log(1.49)
+    covbsacl <- log(1.03)
+    covsexv2 <- log(0.757)
+    
+    # Interindividual variability (OMEGAs)
+    eta_cl  ~ 0.0327
+    eta_v1  ~ 0.0111
+    eta_v2  ~ 0.0237
+    
+    # Residual variability
+    prop.err <-  0.05313
+  })
+  
+  model({
+    # Individual value
+    cl <- exp(tvcl + eta_cl) * (BSA/2.01)^covbsacl
+    v1 <- exp(tvv1 + eta_v1) * (BSA/2.01)^covbsav1
+    q  <- exp(tvq)
+    v2 <- exp(tvv2 + eta_v2)
+    
+    # Sex effect
+    if (Sex == 1) {
+      v2 <- v2 * covsexv2
+    } else {
+      v2 <- v2 * 1
+    }
+    
+    # Conversion
+    k10 <- cl / v1
+    k12 <- q / v1
+    k21 <- q / v2
+    
+    # ODEs
+    d / dt(central) = -k10 * central - k12 * central + k21 * peripheral
+    d / dt(peripheral) = -k21 * peripheral + k12 * central
+    
+    # Concentration
+    cp = central / v1
+    
+    # Error model (on log scale)
+    IPRED = cp
+    IPRED ~ prop(prop.err)
+  })
+}
+
+# Model Fitting
+two_cmt_last_tp_pk_fit <- nlmixr2(
+  busulfan_final_2cmt_model,
+  last_time_point,
+  "posthoc",
+  control = foceiControl(maxOuterIterations=0),
+  table = list(cwres = TRUE, npde = TRUE)
+)
+```
+
+## Estimating individual exposure with no observation
+```{r}
+## No observation
+no_tp_AUC <- indv_fits %>%
+  group_by(ID) %>%
+  summarize(no_tp_AUC = first(no_obs_AUC), .groups = "drop")
+```
+
+
+## Full samples 
+```{r}
+# Plasma drug concentration decline in two phases shown in semi-log plot
+ggplot(busulfan_First_Dose_dataset, aes(TIME/60, DV, group = ID, color = as.factor(ID))) +
+  geom_point() +
+  geom_line() +
+  theme_bw() +
+  labs(title = "Busulfan First Dose semi-log plot", x = "Time (hours)", y = "Conc (mg/L)") +
+  theme(legend.position = "blank")
+```
+
+## model fit - full estimation
+```{r}
+busulfan_first_dose_2cmt_model <- function() {
+  ini({
+    # Typical value (THETAs)
+    tvcl   <- log(0.187)
+    tvv1  <- log(29)
+    tvq   <- log(0.41)
+    tvv2  <- log(17.3)
+    
+    covbsav1 <- log(2.32)
+    covbsacl <- log(1.30)
+    covsexv2 <- log(0.8)
+    
+    # Interindividual variability (OMEGAs)
+    eta_cl  ~ 0.0222 
+    eta_v1  ~ 0.0222
+    eta_v2  ~ 0.0241
+    
+    # Residual variability
+    prop.err <-  0.0955
+  })
+  
+  model({
+    # Individual value
+    cl <- exp(tvcl + eta_cl) * (BSA/2.01)^covbsacl
+    v1 <- exp(tvv1 + eta_v1) * (BSA/2.01)^covbsav1
+    q  <- exp(tvq)
+    v2 <- exp(tvv2 + eta_v2)
+    
+    # Sex effect
+    if (Sex == 1) {
+      v2 <- v2 * covsexv2
+    } else {
+      v2 <- v2 * 1
+    }
+    
+    # Conversion
+    k10 <- cl / v1
+    k12 <- q / v1
+    k21 <- q / v2
+    
+    # ODEs
+    d / dt(central) = -k10 * central - k12 * central + k21 * peripheral
+    d / dt(peripheral) = -k21 * peripheral + k12 * central
+    
+    # Concentration
+    cp = central / v1
+    
+    # Error model (on log scale)
+    IPRED = cp
+    IPRED ~ prop(prop.err)
+  })
+}
+
+# Model Fitting
+full_estimation_pk_fit <- nlmixr2(
+  busulfan_first_dose_2cmt_model,
+  busulfan_First_Dose_dataset,
+  "focei",
+  table = list(cwres = TRUE, npde = TRUE)
+)
+```
+
+## Estimating individual Exposures - Full estimation, TDM, Last Timepoint, No observation
+```{r}
+## TDM
+orig_data <- two_cmt_TDM_pk_fit$origData
+indv_cl <- data.frame(ID = two_cmt_TDM_pk_fit$ID, Clearance = two_cmt_TDM_pk_fit$cl)
+
+tdm_indiv_AUC<- merge(orig_data, indv_cl, by = 'ID')
+tdm_indiv_AUC <- tdm_indiv_AUC %>% mutate(AUC = AMT/Clearance) %>% select(ID, AUC)
+
+tdm_indiv_AUC <- tdm_indiv_AUC %>%
+  group_by(ID) %>%
+  summarize(tdm_AUC = first(AUC), .groups = "drop")
+
+## Last Time POint
+last_tp_indv_cl <- data.frame(ID = two_cmt_last_tp_pk_fit$ID, Clearance = two_cmt_last_tp_pk_fit$cl)
+
+last_tp_indiv_exposure <- merge(last_time_point, last_tp_indv_cl, by = 'ID')
+last_tp_indiv_exposure <- last_tp_indiv_exposure %>% mutate(AUC = AMT/Clearance) %>% select(ID, AUC)
+
+last_tp_AUC <- last_tp_indiv_exposure %>%
+  group_by(ID) %>%
+  summarize(last_tp_AUC = first(AUC), .groups = "drop")
+
+## Full-Estimation
+full_est_indv_cl <- data.frame(ID = full_estimation_pk_fit$ID, Clearance = full_estimation_pk_fit$cl)
+
+full_est_indiv_exposure <- merge(busulfan_First_Dose_dataset, full_est_indv_cl, by = 'ID')
+full_est_indiv_exposure <- full_est_indiv_exposure %>% mutate(AUC = AMT/Clearance) %>% select(ID, AUC)
+
+full_est_AUC <- full_est_indiv_exposure %>%
+  group_by(ID) %>%
+  summarize(full_estimation_AUC = first(AUC), .groups = "drop")
+
+compare_auc <- merge(full_est_AUC, tdm_indiv_AUC, by = "ID")
+compare_auc <- merge(compare_auc, last_tp_AUC, by = "ID")
+compare_auc <- merge(compare_auc, no_tp_AUC, by = "ID")
+
+compare_auc[] <- lapply(compare_auc, function(x) if(is.numeric(x)) round(x, 0) else x)
+print(compare_auc)
+```
+
+## Compare across estimation methods
+```{r}
+# Convert to long format
+df_long <- compare_auc %>%
+  pivot_longer(cols = -ID, names_to = "Method", values_to = "AUC")
+
+# Order methods for nicer plotting
+df_long$Method <- factor(df_long$Method, levels = c("full_estimation_AUC", "tdm_AUC", "last_tp_AUC", "no_tp_AUC"))
+
+# Set common y-axis limits
+y_limits <- c(750, 1750)
+
+# --- Full vs TDM
+df_tdm <- compare_auc %>%
+  select(ID, Full = full_estimation_AUC, TDM = tdm_AUC) %>%
+  pivot_longer(cols = -ID, names_to = "Method", values_to = "AUC") %>%
+  mutate(Method = factor(Method, levels = c("Full", "TDM")))  
+
+p_tdm <- ggplot(df_tdm, aes(x = Method, y = AUC)) +
+  geom_boxplot(alpha = 0.3, aes(fill = Method, color = Method)) +
+  geom_jitter(aes(color = Method), width = 0.1, alpha = 0.7, size = 2) +
+  geom_line(aes(group = ID), color = "grey60", alpha = 0.6) +
+  scale_fill_manual(values = c("Full" = "#F8766D", "TDM" = "#00BFC4")) +
+  scale_color_manual(values = c("Full" = "#F8766D", "TDM" = "#00BFC4")) +
+  theme_bw() +
+  labs(title = "TDM", x = "", y = "AUC") +
+  theme(legend.position = "none",
+        plot.title = element_text(hjust = 0.5)
+        ) +
+  scale_y_continuous(limits = y_limits)
+
+# --- Full vs Last TP
+df_last <- compare_auc %>%
+  select(ID, Full = full_estimation_AUC, Last_TP = last_tp_AUC) %>%
+  pivot_longer(cols = -ID, names_to = "Method", values_to = "AUC") %>%
+  mutate(Method = factor(Method, levels = c("Full", "Last_TP")))  
+
+p_last <- ggplot(df_last, aes(x = Method, y = AUC)) +
+  geom_boxplot(alpha = 0.3, aes(fill = Method, color = Method)) +
+  geom_jitter(aes(color = Method), width = 0.1, alpha = 0.7, size = 2) +
+  geom_line(aes(group = ID), color = "grey60", alpha = 0.6) +
+  scale_fill_manual(values = c("Full" = "#F8766D", "Last_TP" = "#7CAE00")) +
+  scale_color_manual(values = c("Full" = "#F8766D", "Last_TP" = "#7CAE00")) +
+  theme_bw() +
+  labs(title = "Last TP", x = "", y = "AUC") +
+  theme(legend.position = "none",
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        plot.title = element_text(hjust = 0.5)
+        ) +
+  scale_y_continuous(limits = y_limits)
+
+# --- Full vs No TP
+df_no <- compare_auc %>%
+  select(ID, Full = full_estimation_AUC, No_Obs = no_tp_AUC) %>%
+  pivot_longer(cols = -ID, names_to = "Method", values_to = "AUC") %>%
+  mutate(Method = factor(Method, levels = c("Full", "No_Obs")))  
+
+p_no <- ggplot(df_no, aes(x = Method, y = AUC)) +
+  geom_boxplot(alpha = 0.3, aes(fill = Method, color = Method)) +
+  geom_jitter(aes(color = Method), width = 0.1, alpha = 0.7, size = 2) +
+  geom_line(aes(group = ID), color = "grey60", alpha = 0.6) +
+  scale_fill_manual(values = c("Full" = "#F8766D", "No_Obs" = "#C77CFF")) +
+  scale_color_manual(values = c("Full" = "#F8766D", "No_Obs" = "#C77CFF")) +
+  theme_bw() +
+  labs(title = "No Obs", x = "", y = "AUC") +
+  theme(legend.position = "none",
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        plot.title = element_text(hjust = 0.5)
+        ) +
+  scale_y_continuous(limits = y_limits)
+
+wrap_plots(p_tdm, p_last, p_no, ncol = 3)
+```
+
+

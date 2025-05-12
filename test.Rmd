@@ -1,0 +1,128 @@
+---
+title: "2025 National Taiwan University - Population Pharmacokinetics workshop: TEST"
+author: "Jin Gyu Kim"
+date: "2025-05-02"
+output:
+  html_document:
+    css: docs/src/styles/styles.css
+    toc: true
+    number_sections: true
+---
+
+***
+1. **Install the C Compiler**  
+Ensure that a C compiler is installed on your system. For installation instructions, refer to `ReadMe.txt`.
+
+2. **Activate the R environment**  
+Run the following code chunk to install *renv* and *pkgbuild*. When prompted in the console, type Y at install.packages()
+```{r}
+install.packages("renv")
+```
+
+After installing packages, activate the R project by running the code chunk below
+```{r}
+library(renv)
+renv::activate()
+```
+
+2-1. **Restore packages**
+This step will allow you to sync the packages from renv.lock file.
+When prompted in the console, type Y to update your packages inside the project folder.
+```{r, echo = TRUE, message = "hide", warning = "hide", results = "hide"}
+renv::restore()
+```
+
+3. **Run Script**
+Run the scripts below and check if it runs successfully
+
+***
+
+**Load Packages**
+```{r echo = TRUE, message = "hide", warning = "hide", results = "hide"}
+rm(list=ls())
+library(tidyverse)
+library(ggplot2)
+library(nlmixr2)
+library(xpose4)
+library(xpose.nlmixr2)
+library(rxode2)
+library(gridExtra)
+library(ggPMX)
+library(ggpubr)
+library(mrgsolve)
+```
+
+**Data Import**
+```{r, warning = "hide"}
+# Import busulfan two compartment dataset
+busulfan_dataset <- read.csv("dataset/busulfan_First_Dose.csv", na.strings = ".")
+
+# Plasma drug concentration decline in two phases shown in semi-log plot
+ggplot(busulfan_dataset, aes(TIME/60, log(DV), group = ID, color = as.factor(ID))) +
+  geom_line() +
+  theme_bw() +
+  labs(title = "Busulfan semi-log plot", x = "Time (hours)", y = "Conc (mg/L)") +
+  theme(legend.position = "blank")
+```
+
+**Fit**
+```{r, results = "hide"}
+# One compartment model structure
+busulfan_1cmt_base_model <- function() {
+  ini({
+    # Typical value (THETAs)
+    tvcl   <- log(5)
+    tvv1  <- log(50)
+
+    # Interindividual variability (OMEGAs)
+    eta_cl  ~ 0.0322
+    eta_v1  ~ 0.0222
+
+    # Residual variability
+    add.error <-  0.0955
+  })
+
+  model({
+    # Individual value
+    cl <- exp(tvcl + eta_cl)
+    v1 <- exp(tvv1 + eta_v1)
+
+    # Conversion
+    k10 <- cl / v1
+
+    # ODEs
+    d / dt(central) = -k10 * central
+
+    # Concentration
+    cp = central / v1
+
+    # Error model
+    IPRED = cp
+    IPRED ~ add(add.error)
+  })
+}
+
+# 1 compartment model fitting
+one_cmt_pk_fit <- nlmixr2(
+  busulfan_1cmt_base_model,
+  busulfan_dataset,
+  "focei",
+  table = list(cwres = TRUE)
+)
+```
+
+**Plot**
+```{r, warning = "hide"}
+# Convert to XPOSE for goodness of fit
+one_cmt_xpdb_pk <- xpose_data_nlmixr2(one_cmt_pk_fit,
+                                     xp_theme = theme_xp_nlmixr2()
+                                     )
+
+# observation vs population prediction plot
+dv_vs_pred(one_cmt_xpdb_pk,
+           type="pls",
+           title = "One Compartment",
+           log   = 'xy',
+           subtitle = NULL,
+           guide = TRUE)
+```
