@@ -55,7 +55,3 @@ Once the compiler is installed
 
 6. Open workshop materials
 - After successful test run, open NTU_workshop_part1.Rmd and part2.Rmd within RStudio and follow instructions
-
---------------------------------
-
-Jin Gyu Kim (kim.6182@buckeyemail.osu.edu)
