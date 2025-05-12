@@ -651,7 +651,7 @@ two_cmt_final_pk_fit$omega
 two_cmt_final_pk_fit$parFixedDf %>% select(`Back-transformed`, `%RSE`, `Shrink(SD)%`) %>% rename(Parameters = `Back-transformed`)
 ```
 
-## Fit Test Full (fitting of all points)
+# Fit Test Full (fitting of all points)
 ```{r}
 # additive model fitting 
 test_full_two_cmt_final_pk_fit <- nlmixr2(
@@ -685,7 +685,7 @@ test_full_indiv_AUC
 ```
 
 
-## Fit test 2 (fitting of 2 data points)
+# Fit test 2 (fitting of 2 data points)
 ```{r}
 test_last_two_dataset <- busulfan_dataset %>% 
   group_by(ID) %>%
@@ -722,7 +722,7 @@ test_two_last_indiv_AUC <- test_two_last_indiv_AUC %>%
 test_two_last_indiv_AUC
 ```
 
-## Fit test 1 (fitting of 1 data point)
+# Fit test 1 (fitting of 1 data point)
 ```{r}
 test_last_one_dataset <- busulfan_dataset %>% 
   group_by(ID) %>%
@@ -760,7 +760,7 @@ test_one_last_indiv_AUC
 ```
 
 
-## Compare across estimation methods
+# Compare across estimation methods
 ```{r}
 test_compare_auc <- merge(test_full_indiv_AUC, test_two_last_indiv_AUC, by = "ID")
 test_compare_auc <- merge(test_compare_auc, test_one_last_indiv_AUC, by = "ID")
